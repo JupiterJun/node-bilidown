@@ -6,13 +6,18 @@ const crypto = require('crypto');
 const qs = require('qs');
 const os = require('os');
 const path = require('path');
+const { v1: uuidv1 } = require('uuid');
 const print = console.log;
 const $ = axios.create({
     baseURL: 'https://api.bilibili.com/x/',
     timeout: 0,
-    header: {
-        cookie: obj2cookie(require('./cookie.json').jjun)
-    }
+    headers: {
+        'cookie': obj2cookie(require('./cookie.json').jjun)
+    },
+    // proxy: {
+    //     host: '127.0.0.1',
+    //     port: 8888,
+    // }
 });
 const auth = axios.create({
     baseURL: 'https://passport.bilibili.com/',
@@ -121,7 +126,7 @@ async function downVideo(bvid) {
     if (video.videos.length == 1) cids.push(video.videos[0].cid);
     else {
         let pageChoices = []
-        for (i of video.videos) pageChoices.push({
+        for (let i of video.videos) pageChoices.push({
             name: `P${i.page}: ${i.title}`,
             checked: (i.page == 1)
         });
@@ -132,14 +137,15 @@ async function downVideo(bvid) {
             choices: pageChoices
         }]
         )).page
-        for (i of res) cids.push(
+        for (let i of res) cids.push(
             video.videos[Number(i.substring(
                 1, i.indexOf(':')
             )) - 1].cid
         )
     }
-
-
+    let urls = [];
+    for (let i of cids) urls.push(await getVideoUrl(bvid, i));
+    for (let i of urls) await saveVideo(i);
     print(cids);
 }
 
@@ -193,19 +199,19 @@ async function getVideoUrl(bvid, cid) {
             }
         })).data
         if (res.code != 0) throw new Error(res.message);
-        let audio, video = {};
-        for (i of res.data.dash.audio) audio[i.id] = {
-            url: baseUrl
+        let audioUrls = {}, videoUrls = {};
+        for (let i of res.data.dash.audio) audioUrls[i.id] = {
+            url: i.baseUrl
         }
-        for (i of res.data.dash.video) video[i.id] = ({
+        for (let i of res.data.dash.video) videoUrls[i.id] = ({
             url: i.baseUrl,
             url_1: i.backupUrl[0],
-            url_2: i.backUrl[1],
+            url_2: i.backupUrl[1],
             fps: i.farmeRate
         })
         return {
-            audio: audio,
-            video: video
+            audio: audioUrls,
+            video: videoUrls
         }
     } catch (error) {
         throw new Error(error)
@@ -214,19 +220,34 @@ async function getVideoUrl(bvid, cid) {
 
 // 下载保存视频
 async function saveVideo(videoUrls) {
+    let savePath = path.join(os.tmpdir(), 'node-bilidown')
+    if (!fs.existsSync(savePath)) fs.mkdirSync(savePath);
+    let fileName = uuidv1();
     try {
-        let savePath = path.join(os.tmpdir(),'node-bilidown')
-        if (!fs.existsSync(savePath)) fs.mkdirSync(savePath);
-        let writer = fs.createWriteStream(path.resolve(savePath,''))
-        let res = await $.get(videoUrls.audio['32080'].url,{
-            header:{
-                'referer':'https://www.bilibili.com',
-                'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36'
+        let writer = fs.createWriteStream(path.resolve(savePath, `${fileName}.m4a`))
+        let res = await $.get(videoUrls.audio['30280'].url, {
+            headers: {
+                'referer': 'https://www.bilibili.com',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36'
             },
             responseType: "stream",
         })
         res.data.pipe(writer)
     } catch (error) {
-
+        throw new Error(error)
+    }
+    
+    try {
+        let writer = fs.createWriteStream(path.resolve(savePath, `${fileName}.m4v`))
+        let res = await $.get(videoUrls.video['30280'].url, {
+            headers: {
+                'referer': 'https://www.bilibili.com',
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36'
+            },
+            responseType: "stream",
+        })
+        res.data.pipe(writer)
+    } catch (error) {
+        throw new Error(error)
     }
 }
