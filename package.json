@@ -4,5 +4,11 @@
   "description": "基于Node.js的BiliBili视频下载器。",
   "main": "index.js",
   "author": "JupiterJun",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^0.21.1",
+    "inquirer": "^8.1.2",
+    "qs": "^6.10.1",
+    "uuid": "^8.3.2"
+  }
 }
