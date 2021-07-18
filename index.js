@@ -6,15 +6,16 @@ const crypto = require('crypto');
 const qs = require('qs');
 const os = require('os');
 const util = require('util');
+const cp = require('child_process');
 const path = require('path');
 const { v1: uuidv1 } = require('uuid');
-const ffmpeg = require('fluent-ffmpeg');
+// const ffmpeg = require('fluent-ffmpeg');
 const print = console.log;
 const $ = axios.create({
     baseURL: 'https://api.bilibili.com/x/',
     timeout: 0,
     headers: {
-        'cookie': obj2cookie(require('./cookie.json').jjun)
+        'cookie': obj2cookie(require('./cookie.json').awameow)
     },
     // proxy: {
     //     host: '127.0.0.1',
@@ -32,7 +33,7 @@ const ua = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
     // print('\n步骤一：Cookie登录\n');
     // let captchaResult = await cookie();
     // print('\n步骤二：密码登录\n');
-    downVideo('BV1Zo4y1k7NA');
+    downVideo('BV1Sy4y1n7c4');
 })();
 
 // 人机验证
@@ -125,32 +126,35 @@ async function cookie() {
 // 下载视频
 async function downVideo(bvid) {
     var video = await videoInfo(bvid);
-    let cids = [], res = '', savedPaths = [];
-    if (video.videos.length == 1) cids.push(video.videos[0].cid);
+    let cids = [], fileName = {}, savedPaths = [];
+    if (video.videos.length == 1) {
+        cids.push(video.videos[0].cid);
+        fileName[video.videos[0].cid] = `${video.bvid}-${video.title}`;
+    }
     else {
         let pageChoices = []
         for (let i of video.videos) pageChoices.push({
-            name: `P${i.page}: ${i.title}`,
+            name: `P${i.page}${i.title}`,
             checked: (i.page == 1)
         });
-        res = (await _.prompt([{
+        let res = (await _.prompt([{
             type: 'checkbox',
             message: '选择分集: ',
             name: 'page',
             choices: pageChoices
         }]
         )).page
-        for (let i of res) cids.push(
-            video.videos[Number(i.substring(
-                1, i.indexOf(':')
-            )) - 1].cid
-        )
+        for (let i of res) {
+            let cid = video.videos[res.indexOf(i)].cid
+            cids.push(cid);
+            fileName[cid] = `${video.bvid}-${video.title}-${i}`
+        }
     }
     for (let i of cids) {
         print(i);
         let urls = await getVideoUrl(bvid, i);
         let paths = await saveVideo(urls);
-        let savePath = mixAudioVideo(`${video.bvid}-${video.title}-${res}_node-bilidown`, paths)
+        let savePath = mixAudioVideo(`[node-bilidown]_${fileName[i]}`, paths)
         // savedPaths.push(savePath);
     };
     return savedPaths;
@@ -294,18 +298,36 @@ async function saveVideo(videoUrls) {
 
 // 音视频混流
 async function mixAudioVideo(outName, inPaths) {
-    let writer = path.resolve(`./data/${outName}.mp4`)
+    var writer = path.resolve(`./data/${outName}.mp4`)
     try {
-        ffmpeg()
-        .input(inPaths.audio)
-        .input(inPaths.video)
-        .audioCodec('copy')
-        .videoCodec('copy')
-        .on('end',()=>{print('转码完成')})
-        .output(writer)
-        .run()
+        // await new Promise((resolve, reject) => {
+        //     ffmpeg()
+        //         .input(inPaths.audio)
+        //         .input(inPaths.video)
+        //         .audioCodec('copy')
+        //         .videoCodec('copy')
+        //         .on('end', () => {
+        //             print('转码完成');
+        //             resolve();
+        //         })
+        //         .on('progress', (progress) => {
+        //             print(`Processing: ${progress.percent}% done`);
+        //         })
+        //         .on('error', (err, stdout, stderr) => {
+        //             print(`Cannot process video: ${err.message}`);
+        //             reject(err);
+        //         })
+        //         .save(writer)
+        // })
+        let command = `${path.resolve('./ffmpeg.exe')} -i ${inPaths.video} -i ${inPaths.audio} -codec copy -y ${writer}`
+        cp.execSync(command);
     } catch (error) {
         throw new Error(error)
     }
     return writer
+}
+
+// 过滤文件名非法字符
+function invalidCharFliter(char) {
+    
 }
