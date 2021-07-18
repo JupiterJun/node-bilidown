@@ -5,8 +5,10 @@ const fs = require('fs');
 const crypto = require('crypto');
 const qs = require('qs');
 const os = require('os');
+const util = require('util');
 const path = require('path');
 const { v1: uuidv1 } = require('uuid');
+const ffmpeg = require('fluent-ffmpeg');
 const print = console.log;
 const $ = axios.create({
     baseURL: 'https://api.bilibili.com/x/',
@@ -23,6 +25,7 @@ const auth = axios.create({
     baseURL: 'https://passport.bilibili.com/',
     timeout: 0,
 });
+const ua = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36`;
 
 // 主体部分
 (async () => {
@@ -121,8 +124,8 @@ async function cookie() {
 
 // 下载视频
 async function downVideo(bvid) {
-    let video = await videoInfo(bvid);
-    let cids = []
+    var video = await videoInfo(bvid);
+    let cids = [], res = '', savedPaths = [];
     if (video.videos.length == 1) cids.push(video.videos[0].cid);
     else {
         let pageChoices = []
@@ -130,7 +133,7 @@ async function downVideo(bvid) {
             name: `P${i.page}: ${i.title}`,
             checked: (i.page == 1)
         });
-        let res = (await _.prompt([{
+        res = (await _.prompt([{
             type: 'checkbox',
             message: '选择分集: ',
             name: 'page',
@@ -143,10 +146,14 @@ async function downVideo(bvid) {
             )) - 1].cid
         )
     }
-    let urls = [];
-    for (let i of cids) urls.push(await getVideoUrl(bvid, i));
-    for (let i of urls) await saveVideo(i);
-    print(cids);
+    for (let i of cids) {
+        print(i);
+        let urls = await getVideoUrl(bvid, i);
+        let paths = await saveVideo(urls);
+        let savePath = mixAudioVideo(`${video.bvid}-${video.title}-${res}_node-bilidown`, paths)
+        // savedPaths.push(savePath);
+    };
+    return savedPaths;
 }
 
 // Object 转 Header Cookie 格式
@@ -203,12 +210,26 @@ async function getVideoUrl(bvid, cid) {
         for (let i of res.data.dash.audio) audioUrls[i.id] = {
             url: i.baseUrl
         }
-        for (let i of res.data.dash.video) videoUrls[i.id] = ({
-            url: i.baseUrl,
-            url_1: i.backupUrl[0],
-            url_2: i.backupUrl[1],
-            fps: i.farmeRate
-        })
+        for (let i of res.data.support_formats) {
+            if (res.data.dash.video
+                .filter(a => a.id == i.quality).length == 0) continue;
+            videoUrls[i.quality] = ({
+                quaDesc: i.new_description,
+                fps: i.farmeRate,
+                h264: {
+                    url: res.data.dash.video
+                        .filter(a => a.id == i.quality)[0].baseUrl,
+                    urlBackup: res.data.dash.video
+                        .filter(a => a.id == i.quality)[0].backupUrl
+                },
+                h265: {
+                    url: res.data.dash.video
+                        .filter(a => a.id == i.quality)[1].baseUrl,
+                    urlBackup: res.data.dash.video
+                        .filter(a => a.id == i.quality)[1].backupUrl
+                }
+            })
+        }
         return {
             audio: audioUrls,
             video: videoUrls
@@ -224,30 +245,67 @@ async function saveVideo(videoUrls) {
     if (!fs.existsSync(savePath)) fs.mkdirSync(savePath);
     let fileName = uuidv1();
     try {
-        let writer = fs.createWriteStream(path.resolve(savePath, `${fileName}.m4a`))
+        let writer = fs.createWriteStream(
+            path.resolve(savePath, `${fileName}.m4a`))
         let res = await $.get(videoUrls.audio['30280'].url, {
             headers: {
                 'referer': 'https://www.bilibili.com',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36'
+                'User-Agent': ua
             },
-            responseType: "stream",
+            responseType: 'stream',
         })
         res.data.pipe(writer)
+        writer.once[util.promisify.custom] = (foo) => {
+            return new Promise((resolve, reject) => {
+                writer.once(foo, resolve);
+            });
+        };
+        let a = util.promisify(writer.once);
+        await a('finish')
     } catch (error) {
         throw new Error(error)
     }
-    
     try {
-        let writer = fs.createWriteStream(path.resolve(savePath, `${fileName}.m4v`))
-        let res = await $.get(videoUrls.video['30280'].url, {
+        let writer = fs.createWriteStream(
+            path.resolve(savePath, `${fileName}.m4v`))
+        let res = await $.get(videoUrls.video['80'].h264.url, {
             headers: {
                 'referer': 'https://www.bilibili.com',
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36'
+                'User-Agent': ua
             },
             responseType: "stream",
         })
-        res.data.pipe(writer)
+        res.data.pipe(writer);
+        writer.once[util.promisify.custom] = (foo) => {
+            return new Promise((resolve, reject) => {
+                writer.once(foo, resolve);
+            });
+        };
+        let b = util.promisify(writer.once);
+        await b('finish')
     } catch (error) {
         throw new Error(error)
     }
+    return {
+        video: path.resolve(savePath, `${fileName}.m4v`),
+        audio: path.resolve(savePath, `${fileName}.m4a`)
+    }
+}
+
+// 音视频混流
+async function mixAudioVideo(outName, inPaths) {
+    let writer = path.resolve(`./data/${outName}.mp4`)
+    try {
+        ffmpeg()
+        .input(inPaths.audio)
+        .input(inPaths.video)
+        .audioCodec('copy')
+        .videoCodec('copy')
+        .on('end',()=>{print('转码完成')})
+        .output(writer)
+        .run()
+    } catch (error) {
+        throw new Error(error)
+    }
+    return writer
 }
