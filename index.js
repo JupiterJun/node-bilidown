@@ -9,14 +9,14 @@ const util = require('util');
 const cp = require('child_process');
 const path = require('path');
 const { v1: uuidv1 } = require('uuid');
-// const ffmpeg = require('fluent-ffmpeg');
 const print = console.log;
 const $ = axios.create({
-    baseURL: 'https://api.bilibili.com/x/',
+    baseURL: 'http://api.bilibili.com/x/',
     timeout: 0,
     headers: {
-        'cookie': obj2cookie(require('./cookie.json').awameow)
+        'Cookie': obj2cookie(require('./cookie.json').awameow)
     },
+    // 以下代理为测试抓包用
     // proxy: {
     //     host: '127.0.0.1',
     //     port: 8888,
@@ -133,10 +133,7 @@ async function downVideo(bvid) {
     }
     else {
         let pageChoices = []
-        for (let i of video.videos) pageChoices.push({
-            name: `P${i.page}${i.title}`,
-            checked: (i.page == 1)
-        });
+        for (let i of video.videos) pageChoices.push(`P${i.page}_${i.title}`);
         let res = (await _.prompt([{
             type: 'checkbox',
             message: '选择分集: ',
@@ -145,7 +142,7 @@ async function downVideo(bvid) {
         }]
         )).page
         for (let i of res) {
-            let cid = video.videos[res.indexOf(i)].cid
+            let cid = video.videos[pageChoices.indexOf(i)].cid
             cids.push(cid);
             fileName[cid] = `${video.bvid}-${video.title}-${i}`
         }
@@ -154,7 +151,7 @@ async function downVideo(bvid) {
         print(i);
         let urls = await getVideoUrl(bvid, i);
         let paths = await saveVideo(urls);
-        let savePath = mixAudioVideo(`[node-bilidown]_${fileName[i]}`, paths)
+        let savePath = mixAudioVideo(`node-bilidown_${fileName[i]}`, paths)
         // savedPaths.push(savePath);
     };
     return savedPaths;
@@ -164,7 +161,7 @@ async function downVideo(bvid) {
 function obj2cookie(obj) {
     if (obj.constructor == Object) {
         var str = '';
-        for (let i in obj) str = `${str}; ${i}=${obj[i]}`
+        for (let i in obj) str = `${i}=${obj[i]}; ${str}`
         return str
     }
 }
@@ -207,7 +204,15 @@ async function getVideoUrl(bvid, cid) {
                 bvid: bvid,
                 cid: cid,
                 fnval: 16,
-            }
+                qn: 116,
+                fnver:0,
+                fourk:1
+            },
+            // headers:{
+            //     'User-Agent': 'curl/7.77.0',
+            //     'Proxy-Connection': 'Keep-Alive',
+            //     'Accept':'*/*'
+            // }
         })).data
         if (res.code != 0) throw new Error(res.message);
         let audioUrls = {}, videoUrls = {};
@@ -272,7 +277,7 @@ async function saveVideo(videoUrls) {
     try {
         let writer = fs.createWriteStream(
             path.resolve(savePath, `${fileName}.m4v`))
-        let res = await $.get(videoUrls.video['80'].h264.url, {
+        let res = await $.get(videoUrls.video['116'].h265.url, {
             headers: {
                 'referer': 'https://www.bilibili.com',
                 'User-Agent': ua
@@ -298,36 +303,14 @@ async function saveVideo(videoUrls) {
 
 // 音视频混流
 async function mixAudioVideo(outName, inPaths) {
-    var writer = path.resolve(`./data/${outName}.mp4`)
+    var writer = path.resolve(`./data/${outName.replace(/[\\/?*<>:"|]|\n/g, '')}.mp4`)
     try {
-        // await new Promise((resolve, reject) => {
-        //     ffmpeg()
-        //         .input(inPaths.audio)
-        //         .input(inPaths.video)
-        //         .audioCodec('copy')
-        //         .videoCodec('copy')
-        //         .on('end', () => {
-        //             print('转码完成');
-        //             resolve();
-        //         })
-        //         .on('progress', (progress) => {
-        //             print(`Processing: ${progress.percent}% done`);
-        //         })
-        //         .on('error', (err, stdout, stderr) => {
-        //             print(`Cannot process video: ${err.message}`);
-        //             reject(err);
-        //         })
-        //         .save(writer)
-        // })
         let command = `${path.resolve('./ffmpeg.exe')} -i ${inPaths.video} -i ${inPaths.audio} -codec copy -y ${writer}`
         cp.execSync(command);
     } catch (error) {
         throw new Error(error)
     }
+    fs.unlinkSync(inPaths.video);
+    fs.unlinkSync(inPaths.audio);
     return writer
-}
-
-// 过滤文件名非法字符
-function invalidCharFliter(char) {
-    
 }
