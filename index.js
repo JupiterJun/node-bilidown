@@ -1,39 +1,48 @@
+'use strict';
+
+/*
+ A Bilibili Video Downloader Runs on Node.js.
+ */
+
 // 常量和依赖库
-const _ = require('inquirer');
-const axios = require('axios');
-const fs = require('fs');
-const crypto = require('crypto');
-const qs = require('qs');
-const os = require('os');
-const util = require('util');
-const cp = require('child_process');
-const path = require('path');
-const { v1: uuidv1 } = require('uuid');
+import _ from 'inquirer';
+import axios from 'axios';
+import fs from 'fs';
+import crypto from 'crypto';
+import qs from 'qs';
+import os from 'os';
+import util from 'util';
+import cp from 'child_process'
+import path from 'path';
+import { v1 as uuidv1 } from 'uuid';
+import { Low, JSONFile } from 'lowdb'
+import cookie from './cookie.js';
 const print = console.log;
 const $ = axios.create({
     baseURL: 'http://api.bilibili.com/x/',
     timeout: 0,
     headers: {
-        'Cookie': obj2cookie(require('./cookie.json').awameow)
+        'Cookie': obj2cookie(cookie.awameow)
     },
     // 以下代理为测试抓包用
-    // proxy: {
-    //     host: '127.0.0.1',
-    //     port: 8888,
-    // }
+    proxy: {
+        host: '127.0.0.1',
+        port: 8888,
+    }
 });
 const auth = axios.create({
     baseURL: 'https://passport.bilibili.com/',
     timeout: 0,
 });
+const file = path.resolve('./data/db.json');
+const adapter = new JSONFile(file);
+const db = new Low(adapter);
 const ua = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Safari/537.36`;
 
 // 主体部分
 (async () => {
-    // print('\n步骤一：Cookie登录\n');
-    // let captchaResult = await cookie();
-    // print('\n步骤二：密码登录\n');
-    downVideo('BV1Sy4y1n7c4');
+    
+    downVideo('BV1fK4y1t7hj');
 })();
 
 // 人机验证
@@ -119,7 +128,7 @@ async function login(captchaResult) {
 }
 
 // Cookie 登录
-async function cookie() {
+async function cookieLogin() {
 
 }
 
@@ -176,7 +185,7 @@ async function videoInfo(bvid) {
         })).data
         if (res.code != 0) throw new Error(res.data);
         let videos = [];
-        for (i of res.data.pages) videos.push({
+        for (let i of res.data.pages) videos.push({
             cid: i.cid,
             page: i.page,
             title: i.part
@@ -203,16 +212,9 @@ async function getVideoUrl(bvid, cid) {
             params: {
                 bvid: bvid,
                 cid: cid,
-                fnval: 16,
-                qn: 116,
-                fnver:0,
-                fourk:1
+                fnval: 208,
+                fourk: 1
             },
-            // headers:{
-            //     'User-Agent': 'curl/7.77.0',
-            //     'Proxy-Connection': 'Keep-Alive',
-            //     'Accept':'*/*'
-            // }
         })).data
         if (res.code != 0) throw new Error(res.message);
         let audioUrls = {}, videoUrls = {};
@@ -277,7 +279,7 @@ async function saveVideo(videoUrls) {
     try {
         let writer = fs.createWriteStream(
             path.resolve(savePath, `${fileName}.m4v`))
-        let res = await $.get(videoUrls.video['116'].h265.url, {
+        let res = await $.get(videoUrls.video['120'].h265.url, {
             headers: {
                 'referer': 'https://www.bilibili.com',
                 'User-Agent': ua
@@ -305,7 +307,7 @@ async function saveVideo(videoUrls) {
 async function mixAudioVideo(outName, inPaths) {
     var writer = path.resolve(`./data/${outName.replace(/[\\/?*<>:"|]|\n/g, '')}.mp4`)
     try {
-        let command = `${path.resolve('./ffmpeg.exe')} -i ${inPaths.video} -i ${inPaths.audio} -codec copy -y ${writer}`
+        let command = `${path.resolve('./ffmpeg.exe')} -i "${inPaths.video}" -i "${inPaths.audio}" -codec copy -y "${writer}"`
         cp.execSync(command);
     } catch (error) {
         throw new Error(error)

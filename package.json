@@ -5,10 +5,12 @@
   "main": "index.js",
   "author": "JupiterJun",
   "license": "MIT",
+  "type": "module",
   "dependencies": {
     "axios": "^0.21.1",
     "fluent-ffmpeg": "^2.1.2",
     "inquirer": "^8.1.2",
+    "lowdb": "^2.1.0",
     "qs": "^6.10.1",
     "uuid": "^8.3.2"
   }

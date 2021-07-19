@@ -257,6 +257,13 @@ log-symbols@^4.1.0:
     chalk "^4.1.0"
     is-unicode-supported "^0.1.0"
 
+lowdb@^2.1.0:
+  version "2.1.0"
+  resolved "https://registry.nlark.com/lowdb/download/lowdb-2.1.0.tgz#c8063e228b5ab3e082ece90e0512537ecb6e1e2a"
+  integrity sha1-yAY+Iotas+CC7OkOBRJTfstuHio=
+  dependencies:
+    steno "^1.0.0"
+
 mimic-fn@^2.1.0:
   version "2.1.0"
   resolved "https://registry.npm.taobao.org/mimic-fn/download/mimic-fn-2.1.0.tgz?cache=0&sync_timestamp=1617823674050&other_urls=https%3A%2F%2Fregistry.npm.taobao.org%2Fmimic-fn%2Fdownload%2Fmimic-fn-2.1.0.tgz#7ed2c2ccccaf84d3ffcb7a69b57711fc2083401b"
@@ -358,6 +365,11 @@ signal-exit@^3.0.2:
   version "3.0.3"
   resolved "https://registry.npm.taobao.org/signal-exit/download/signal-exit-3.0.3.tgz#a1410c2edd8f077b08b4e253c8eacfcaf057461c"
   integrity sha1-oUEMLt2PB3sItOJTyOrPyvBXRhw=
+
+steno@^1.0.0:
+  version "1.0.0"
+  resolved "https://registry.nlark.com/steno/download/steno-1.0.0.tgz#475e32c6066ec9760229eaaf1550601764fbecba"
+  integrity sha1-R14yxgZuyXYCKeqvFVBgF2T77Lo=
 
 string-width@^4.1.0:
   version "4.2.2"
